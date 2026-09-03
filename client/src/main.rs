@@ -1,27 +1,32 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use iced::{Length::Fill, Task, widget::{self, container}};
+use iced::{Length::Fill, Subscription, Task, widget::{self, container}, window};
 
 use iroh::EndpointId;
 
-use p2p::{self, protocol, protocol::IntoBytes};
+use p2p::{self, protocol::{self, IntoBytes, ServerInformation}};
 use p2p::protocol::mouse_click::{MouseButton, MouseState};
 
 struct State {
+    server_info: protocol::ServerInformation,
+    known_size: (usize, usize),
     mouse_pos: (f32, f32),
     p2p: Arc<Mutex<p2p::P2P>>
 }
 
 #[derive(Clone)]
 enum Message {
+    WindowResized((usize, usize)),
     MoveMouse(f32, f32),
     ClickMouse(MouseButton, MouseState),
     Sent(Result<(), String>),
 }
 
 impl State {
-    fn boot(p2p: Arc<Mutex<p2p::P2P>>) -> Self {
+    fn boot(p2p: Arc<Mutex<p2p::P2P>>, server_information: ServerInformation) -> Self {
         Self {
+            server_info: server_information,
+            known_size: (0, 0),
             mouse_pos: (0.0, 0.0),
             p2p: p2p
         }
@@ -32,9 +37,11 @@ impl State {
             Message::MoveMouse(x, y) => {
                 self.mouse_pos = (x, y);
 
-                let p2p = self.p2p.clone();
+                let mouse_pct = (x / self.known_size.0 as f32, y / self.known_size.1 as f32);
+                let scaled_mouse_pos = (mouse_pct.0 * self.server_info.width as f32, mouse_pct.1 * self.server_info.height as f32);
 
-                let message = p2p::protocol::MouseMove {x: x as u32, y: y as u32};
+                let p2p = self.p2p.clone();
+                let message = p2p::protocol::MouseMove {x: scaled_mouse_pos.0 as u32, y: scaled_mouse_pos.1 as u32};
 
                 Task::perform(
                 async move {
@@ -59,6 +66,10 @@ impl State {
                     },
                     Message::Sent,
                 )
+            },
+            Message::WindowResized(size) => {
+                self.known_size = size;
+                Task::none()
             },
             Message::Sent(result) => {
                 if let Err(e) = result { eprintln!("send failed: {e}"); }
@@ -90,6 +101,10 @@ impl State {
     }
 }
 
+fn subscription(_: &State) -> Subscription<Message> {
+    window::resize_events().map(|(_id, size)| Message::WindowResized((size.width as usize, size.height as usize)))
+}
+
 #[tokio::main]
 async fn main() {
     let key = std::env::args().nth(1).unwrap();
@@ -102,20 +117,19 @@ async fn main() {
         protocol::FromBytes::ServerInformation(d) => d,
         _ => panic!("Did not receive server info")
     };
-
-    println!("Server info: {:?}", server_info);
     
-    let p2p = Arc::new(Mutex::new(client));
+    let p2p: Arc<Mutex<p2p::P2P>> = Arc::new(Mutex::new(client));
     let moved_arc = p2p.clone();
 
     let _ = iced::application(
         move || {
             let arc: Arc<Mutex<p2p::P2P>> = moved_arc.clone();
-            State::boot(arc)
+            State::boot(arc, server_info)
         },
         State::update,
         State::view
     )
+        .subscription(subscription)
         .run();
 
     let mut client = p2p.lock().await;
