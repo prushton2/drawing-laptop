@@ -3,11 +3,12 @@ use enigo::{Button, Coordinate::Abs, Direction::Click, Enigo, Settings};
 use iroh::endpoint::presets::{self, Preset};
 use iroh::EndpointId;
 
+use p2p::protocol::FromBytes;
 use p2p::{self, protocol, protocol::IntoBytes};
 
 #[tokio::main]
 async fn main() {
-    // let mut enigo = Enigo::new(&Settings::default()).unwrap();
+    let mut enigo = Enigo::new(&Settings::default()).unwrap();
     
     // enigo.move_mouse(1280, 800, Abs).unwrap();
     // enigo.button(Button::Left, Click).unwrap();
@@ -26,6 +27,11 @@ async fn main() {
     loop {
         let response = server.read().await.unwrap();
         let parsed = p2p::protocol::FromBytes::parse(&response);
-        println!("Received: {:?}", parsed);
+        match parsed {
+            FromBytes::MouseMove(message) => {
+                // enigo.move_mouse(message.x as i32, message.y as i32, Abs).unwrap();
+            }
+            _ => {}
+        }
     }
 }
