@@ -11,4 +11,4 @@ Any remaining bytes are 'arguments' of the action
 |--|--|--|--|
 Server Information | 0x00 | u32 (screen size x) u32 (screen size y) | Basic information about the server for the client to function
 Move Mouse | 0x10 | u32 (x position); u32 (y position) | Indicates where to move the mouse to
-Click | 0x11 | u8 (button | isClicked)| the 2^1 bit determines the mouse button (0 = left, 1 = right) and the 2^0 bit determines the state (0 = released, 1 = pressed)
+Click | 0x11 | u8 (button \| isClicked)| the 2^1 bit determines the mouse button (0 = left, 1 = right) and the 2^0 bit determines the state (0 = released, 1 = pressed)
