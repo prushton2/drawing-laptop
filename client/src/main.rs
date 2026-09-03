@@ -1,5 +1,7 @@
 use iced::{Length::Fill, widget::{self, container}};
 
+mod p2p;
+
 #[derive(Default)]
 struct State {
     mouse_pos: (f32, f32)

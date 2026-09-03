@@ -1,10 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use iroh::{
-    Endpoint, EndpointId, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router},
-};
-use tokio::io::AsyncReadExt;
+use iroh::{Endpoint, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
 
 const ALPN: &[u8] = b"chat/0";
 
