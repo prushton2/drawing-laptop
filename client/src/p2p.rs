@@ -1,12 +1,14 @@
-use std::{env, sync::{Arc, Mutex}};
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use iroh::{
-    Endpoint, EndpointId, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router},
-};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use iroh::{Endpoint, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
 
-const ALPN: &[u8] = b"chat/0";
+const ALPN: &[u8] = b"hello";
+
+#[derive(Debug, Copy, Clone)]
+pub enum P2PError {
+    ConnectionNotEstablished
+}
 
 #[derive(Debug, Clone)]
 struct Handler {
@@ -28,68 +30,14 @@ impl ProtocolHandler for Handler {
     }
 }
 
-/// Reads and writes at the same time on one stream.
-// async fn chat(mut send: SendStream, recv: RecvStream) -> Result<()> {
-//     // Incoming lines print as they arrive, on their own task.
-//     let mut incoming = BufReader::new(recv).lines();
-//     let reader = tokio::spawn(async move {
-//         while let Ok(Some(line)) = incoming.next_line().await {
-//             println!("< {line}");
-//         }
-//         println!("* peer hung up");
-//     });
-
-//     // Outgoing lines come from stdin.
-//     let mut stdin = BufReader::new(tokio::io::stdin()).lines();
-//     while let Some(line) = stdin.next_line().await? {
-//         send.write_all(format!("{line}\n").as_bytes()).await?;
-//     }
-
-//     send.finish()?;
-//     reader.await?;
-//     Ok(())
-// }
-
-// pub async fn main() -> Result<()> {
-//     tracing_subscriber::fmt::init();
-
-//     let c = Box::new(Handler);
-    
-//     let ep = Endpoint::bind(presets::N0).await?;
-//     let router = Router::builder(ep.clone()).accept(ALPN, c.clone()).spawn();
-
-//     match env::args().nth(1) {
-//         // No argument: wait for someone to dial us.
-//         None => {
-//             ep.online().await;
-//             println!("* your id: {}", ep.id());
-//             println!("* waiting for a peer");
-//             tokio::signal::ctrl_c().await?;
-//         }
-//         // With an id: dial, then talk.
-//         Some(id) => {
-//             let conn = ep.connect(id.parse::<EndpointId>()?, ALPN).await?;
-//             let (send, recv) = conn.open_bi().await?;
-//             println!("* connected, type away");
-//             if let Err(err) = chat(send, recv).await {
-//                 eprintln!("* chat ended: {err}");
-//             }
-//             conn.close(0u32.into(), b"bye");
-//         }
-//     }
-
-//     router.shutdown().await?;
-//     Ok(())
-// }
 pub struct P2P {
     handler: Box<Handler>,
-    ep: Endpoint,
     router: Router,
-    conn: Option<Connection>
+    conn: Option<(SendStream, RecvStream)>,
 }
 
 impl P2P {
-    async fn init() -> (Self, PublicKey) {
+    pub async fn init() -> (Self, PublicKey) {
         let handler = Box::new(Handler::new());
 
         let ep = Endpoint::bind(presets::N0).await.unwrap();
@@ -100,13 +48,12 @@ impl P2P {
 
         (Self {
             handler: handler,
-            ep: ep,
             router: router,
-            conn: None
+            conn: None,
         }, id)
     }
 
-    async fn await_connection(&mut self) {
+    pub async fn await_connection(&mut self) {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             let mutex = self.handler.conn.lock().unwrap();
@@ -114,23 +61,68 @@ impl P2P {
         }
 
         let conn = self.handler.conn.lock().unwrap().as_mut().unwrap().clone();
+        let (send, receive) = conn.accept_bi().await.unwrap();
 
-        self.conn = Some(conn);
+        self.conn = Some((send, receive));
+        
+        let _ = self.read();
     }
 
-    async fn connect(id: PublicKey) -> Self {
+    pub async fn connect(id: PublicKey) -> Self {
         let handler = Box::new(Handler::new());
 
         let ep = Endpoint::bind(presets::N0).await.unwrap();
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
         
         let conn = ep.connect(id, ALPN).await.unwrap();
+        let (send, receive) = conn.open_bi().await.unwrap();
+        
 
-        Self {
+        let mut this = Self {
             handler: handler,
-            ep: ep,
             router: router,
-            conn: Some(conn)
+            conn: Some((send, receive)),
+        };
+
+        let _ = this.send(ALPN);
+
+        this
+    }
+
+    pub async fn send(&mut self, message: &[u8]) -> Result<(), P2PError> {
+        let (send, _) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
+        let len: [u8; 4] = (message.len() as u32).to_be_bytes();
+        send.write_all(&len).await.unwrap();
+        send.write_all(message).await.unwrap();
+        Ok(())
+    }
+
+    pub async fn read(&mut self) -> Result<Vec<u8>, P2PError> {
+        let (_, recv) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
+        let mut byte = [0u8; 1];
+        let mut length: u32 = 0;
+        
+        // get length of message (first 4 bytes)
+        for _ in 0..4 {
+            match recv.read(&mut byte).await.unwrap() {
+                None => return Ok(vec![]),
+                Some(_) => {
+                    // println!("Read byte {:?}", byte);
+                    length <<= 8;
+                    length |= byte[0] as u32;
+                }
+            }
         }
+
+        let mut bytes: Vec<u8> = vec![];
+        bytes.resize(length as usize, 0);
+
+        let _ = recv.read_exact(&mut bytes[..]).await;
+
+        Ok(bytes)
+    }
+
+    pub async fn close(&mut self) {
+        let _ = self.router.shutdown().await;
     }
 }

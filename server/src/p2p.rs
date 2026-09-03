@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use iroh::{Endpoint, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
 
-const ALPN: &[u8] = b"chat/0";
+const ALPN: &[u8] = b"hello";
 
 #[derive(Debug, Copy, Clone)]
 pub enum P2PError {
@@ -64,18 +64,8 @@ impl P2P {
         let (send, receive) = conn.accept_bi().await.unwrap();
 
         self.conn = Some((send, receive));
-
-        println!("Awaiting initial bytes");
         
-        let mut initial_string = String::from("");
-        while initial_string.len() < 4 {
-            match Self::read(self).await.unwrap() {
-                Some(t) => initial_string += &t,
-                None => {}
-            }
-
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        }
+        let _ = self.read();
     }
 
     pub async fn connect(id: PublicKey) -> Self {
@@ -85,36 +75,51 @@ impl P2P {
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
         
         let conn = ep.connect(id, ALPN).await.unwrap();
-        let (mut send, receive) = conn.open_bi().await.unwrap();
-        let _ = send.write_all(b"Open\n").await.unwrap();
+        let (send, receive) = conn.open_bi().await.unwrap();
+        
 
-        Self {
+        let mut this = Self {
             handler: handler,
             router: router,
             conn: Some((send, receive)),
-        }
+        };
+
+        let _ = this.send(ALPN);
+
+        this
     }
 
-
-    pub async fn send(&mut self, message: &str) -> Result<(), P2PError> {
+    pub async fn send(&mut self, message: &[u8]) -> Result<(), P2PError> {
         let (send, _) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
-        send.write_all(message.as_bytes()).await.unwrap();
-        send.write_all(b"\n").await.unwrap();
+        let len: [u8; 4] = (message.len() as u32).to_be_bytes();
+        send.write_all(&len).await.unwrap();
+        send.write_all(message).await.unwrap();
         Ok(())
     }
 
-    pub async fn read(&mut self) -> Result<Option<String>, P2PError> {
+    pub async fn read(&mut self) -> Result<Vec<u8>, P2PError> {
         let (_, recv) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
-        let mut line = Vec::new();
         let mut byte = [0u8; 1];
-        loop {
+        let mut length: u32 = 0;
+        
+        // get length of message (first 4 bytes)
+        for _ in 0..4 {
             match recv.read(&mut byte).await.unwrap() {
-                None | Some(0) => return Ok(None),        // stream finished
-                _ if byte[0] == b'\n' => break,
-                _ => line.push(byte[0]),
+                None => return Ok(vec![]),
+                Some(_) => {
+                    // println!("Read byte {:?}", byte);
+                    length <<= 8;
+                    length |= byte[0] as u32;
+                }
             }
         }
-        Ok(Some(String::from_utf8_lossy(&line).into_owned()))
+
+        let mut bytes: Vec<u8> = vec![];
+        bytes.resize(length as usize, 0);
+
+        let _ = recv.read_exact(&mut bytes[..]).await;
+
+        Ok(bytes)
     }
 
     pub async fn close(&mut self) {

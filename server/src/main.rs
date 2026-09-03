@@ -29,11 +29,11 @@ async fn main() {
             server.await_connection().await;
             println!("Connection established");
 
-            let _ = server.send("s -> c").await;
-            println!("Sent!");
-
             let message = server.read().await.unwrap();
             println!("< {:?}", message);
+
+            let _ = server.send("123".as_bytes()).await;
+            println!("Sent!");
 
             let message = server.read().await.unwrap();
             println!("< {:?}", message);
@@ -47,13 +47,13 @@ async fn main() {
             let mut server = p2p::P2P::connect(key.parse::<EndpointId>().unwrap()).await;
             println!("Connection established");
 
+            let _ = server.send("123456".as_bytes()).await;
+            println!("Sent!");
+
             let message = server.read().await.unwrap();
             println!("< {:?}", message);
 
-            let _ = server.send("c -> s").await;
-            println!("Sent!");
-
-            let _ = server.send("c -> s").await;
+            let _ = server.send("12345".as_bytes()).await;
             println!("Sent!");
 
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
