@@ -1,13 +1,18 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use iroh::{Endpoint, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
+use iroh::{Endpoint, PublicKey, endpoint::{BindError, ConnectError, Connection, ConnectionError, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
 
 const ALPN: &[u8] = b"hello";
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
+#[allow(unused)]
 pub enum P2PError {
-    ConnectionNotEstablished
+    ConnectionNotEstablished,
+    BindError(BindError),
+    ConnectionError(ConnectionError),
+    ConnectError(ConnectError),
+    PoisonedMutex
 }
 
 #[derive(Debug, Clone)]
@@ -37,45 +42,46 @@ pub struct P2P {
 }
 
 impl P2P {
-    pub async fn init() -> (Self, PublicKey) {
+    pub async fn init() -> Result<(Self, PublicKey), P2PError> {
         let handler = Box::new(Handler::new());
 
-        let ep = Endpoint::bind(presets::N0).await.unwrap();
+        let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::BindError(e))?;
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
 
         ep.online().await;
         let id = ep.id();
 
-        (Self {
+        Ok((Self {
             handler: handler,
             router: router,
             conn: None,
-        }, id)
+        }, id))
     }
 
-    pub async fn await_connection(&mut self) {
+    pub async fn await_connection(&mut self) -> Result<(), P2PError> {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             let mutex = self.handler.conn.lock().unwrap();
             if mutex.is_some() { break; }
         }
 
-        let conn = self.handler.conn.lock().unwrap().as_mut().unwrap().clone();
-        let (send, receive) = conn.accept_bi().await.unwrap();
+        let conn = self.handler.conn.lock().map_err(|_| P2PError::PoisonedMutex)?.as_mut().unwrap().clone();
+        let (send, receive) = conn.accept_bi().await.map_err(|e| P2PError::ConnectionError(e))?;
 
         self.conn = Some((send, receive));
         
-        let _ = self.read();
+        let _ = self.read().await;
+        Ok(())
     }
 
-    pub async fn connect(id: PublicKey) -> Self {
+    pub async fn connect(id: PublicKey) -> Result<Self, P2PError> {
         let handler = Box::new(Handler::new());
 
-        let ep = Endpoint::bind(presets::N0).await.unwrap();
+        let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::BindError(e))?;
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
         
-        let conn = ep.connect(id, ALPN).await.unwrap();
-        let (send, receive) = conn.open_bi().await.unwrap();
+        let conn = ep.connect(id, ALPN).await.map_err(|e| P2PError::ConnectError(e))?;
+        let (send, receive) = conn.open_bi().await.map_err(|e| P2PError::ConnectionError(e))?;
         
 
         let mut this = Self {
@@ -86,7 +92,7 @@ impl P2P {
 
         let _ = this.send(ALPN);
 
-        this
+        Ok(this)
     }
 
     pub async fn send(&mut self, message: &[u8]) -> Result<(), P2PError> {
