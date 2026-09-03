@@ -36,7 +36,7 @@ impl From<MouseButton> for u8 {
     fn from(value: MouseButton) -> Self {
         match value {
             MouseButton::Left => 0,
-            MouseButton::Right => 0
+            MouseButton::Right => 1
         }
     }
 }
