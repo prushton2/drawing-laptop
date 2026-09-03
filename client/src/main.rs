@@ -107,7 +107,10 @@ fn subscription(_: &State) -> Subscription<Message> {
 
 #[tokio::main]
 async fn main() {
-    let key = std::env::args().nth(1).unwrap();
+    let pin = std::env::args().nth(1).unwrap();
+    let key = p2p::remote_key_store::get(&pin).await;
+    p2p::remote_key_store::delete(&pin).await;
+
     let mut client = p2p::P2P::connect(key.parse::<EndpointId>().unwrap()).await.unwrap();
     let _ = client.send("test".as_bytes()).await;
 

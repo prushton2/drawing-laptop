@@ -13,7 +13,11 @@ async fn main() {
     // enigo.move_mouse(1280, 800, Abs).unwrap();
     // enigo.button(Button::Left, Click).unwrap();
     let (mut server, key) = p2p::P2P::init().await.unwrap();
+    let pin = p2p::remote_key_store::generate_key();
+    p2p::remote_key_store::set(&pin, &key.to_string()).await;
     println!("Key: {}", key);
+    println!("Pin: {}", pin);
+
     server.await_connection().await.unwrap();
     println!("Connection established");
 
@@ -27,11 +31,12 @@ async fn main() {
     loop {
         let response = server.read().await.unwrap();
         let parsed = p2p::protocol::FromBytes::parse(&response);
-        match parsed {
-            FromBytes::MouseMove(message) => {
-                // enigo.move_mouse(message.x as i32, message.y as i32, Abs).unwrap();
-            }
-            _ => {}
-        }
+        println!("{:?}", parsed);
+        // match parsed {
+        //     FromBytes::MouseMove(message) => {
+        //        enigo.move_mouse(message.x as i32, message.y as i32, Abs).unwrap();
+        //     }
+        //     _ => {}
+        // }
     }
 }
