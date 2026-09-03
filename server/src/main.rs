@@ -3,10 +3,7 @@ use enigo::{Button, Coordinate::Abs, Direction::Click, Enigo, Settings};
 use iroh::endpoint::presets::{self, Preset};
 use iroh::EndpointId;
 
-use crate::protocol::IntoBytes;
-
-mod p2p;
-mod protocol;
+use p2p::{self, protocol, protocol::IntoBytes};
 
 #[tokio::main]
 async fn main() {
@@ -20,14 +17,15 @@ async fn main() {
     println!("Connection established");
 
     let server_info = protocol::ServerInformation {
-        width: 2560,
-        height: 1600
+        width: 1920,
+        height: 1080
     };
 
     let _ = server.send(&server_info.into_bytes()).await;
 
     loop {
         let response = server.read().await.unwrap();
-        println!("Received: {:?}", response);
+        let parsed = p2p::protocol::FromBytes::parse(&response);
+        println!("Received: {:?}", parsed);
     }
 }

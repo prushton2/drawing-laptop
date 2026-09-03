@@ -4,8 +4,7 @@ use iced::{Length::Fill, Task, widget::{self, container}};
 
 use iroh::EndpointId;
 
-mod p2p;
-mod protocol;
+use p2p::{self, protocol, protocol::IntoBytes};
 
 struct State {
     mouse_pos: (f32, f32),
@@ -36,9 +35,11 @@ impl State {
 
                 let p2p = self.p2p.clone();
 
+                let message = p2p::protocol::MouseMove {x: x as u32, y: y as u32};
+
                 Task::perform(
                 async move {
-                        match p2p.lock().await.send(&buf).await {
+                        match p2p.lock().await.send(&message.into_bytes()).await {
                             Ok(_) => Ok(()),
                             Err(t) => Err(format!("{:?}", t))
                         }

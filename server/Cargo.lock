@@ -2233,6 +2233,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "p2p"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "iroh",
+ "tokio",
+]
+
+[[package]]
 name = "papaya"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2845,6 +2854,7 @@ dependencies = [
  "anyhow",
  "enigo",
  "iroh",
+ "p2p",
  "tokio",
  "tracing-subscriber",
 ]
