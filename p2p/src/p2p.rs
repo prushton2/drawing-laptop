@@ -60,7 +60,7 @@ impl P2P {
 
     pub async fn await_connection(&mut self) -> Result<(), P2PError> {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            std::thread::sleep(std::time::Duration::from_secs(1));
             let mutex = self.handler.conn.lock().unwrap();
             if mutex.is_some() { break; }
         }
