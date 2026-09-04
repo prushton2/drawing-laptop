@@ -34,7 +34,7 @@ pub enum Message {
     
     PINTextbox(String),
     KeyTextbox(String),
-    Sent(Result<(), String>),
+    Sent(Result<(), String>)
 }
 
 impl Window {
@@ -130,7 +130,13 @@ impl Window {
                 Task::none()
             },
             Message::Sent(result) => {
-                if let Err(e) = result { eprintln!("send failed: {e}"); }
+                if let Err(e) = result { 
+                    eprintln!("send failed: {e}"); 
+                    self.p2p = None;
+                    self.key_textbox = String::from("");
+                    self.pin_textbox = String::from("");
+                }
+                
                 Task::none()
             },
 

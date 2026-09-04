@@ -1,12 +1,14 @@
-use p2p::p2p::P2PError;
-use tokio::sync::Mutex;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+use tokio::sync::Mutex;
+
+use iced::Length::Fill;
 use iced::Task;
-use iced::widget::{button, column, text, text_input};
+use iced::widget::{space, button, column, container, row, text, text_input};
 
 use p2p::protocol::{FromBytes, IntoBytes, ServerInformation};
+use p2p::p2p::P2PError;
 
 use crate::mouse::{self, Mouse};
 
@@ -29,14 +31,14 @@ pub enum Message {
     ConnectionEstablished(Result<(), String>),
     Disconnect,
     Drop,
-    Null(i32)
+    Null(())
 }
 
 impl Window {
-    pub fn boot(server_information: ServerInformation, p2p: Arc<Mutex<Option<p2p::P2P>>>) -> Self {
+    pub fn boot(server_information: ServerInformation) -> Self {
         let this = Self {
             server_info: server_information,
-            p2p: p2p,
+            p2p: Arc::new(Mutex::new(None)),
             mouse_move_handle: None,
             pin: None,
             key: None,
@@ -109,7 +111,7 @@ impl Window {
 
                         drop(server_lock);
 
-                        let mut mouse = mouse::dummy::DummyMouse::new();
+                        let mut mouse = mouse::EnigoMouse::new();
                         
                         loop {
                             let mut server_lock = p2p_arc.lock().await;
@@ -157,7 +159,7 @@ impl Window {
                             println!("Could not close connection");
                         }
                         
-                        0
+                        ()
                     },
                     Message::Null,
                 )
@@ -176,18 +178,24 @@ impl Window {
             return button("Disconnect").on_press(Message::Disconnect).into();
         }
 
-        let pin = format!("Pin: {:?}", self.pin);
-        let key = format!("Key: {:?}", self.key);
-        column![
-            text_input(&pin, &pin).on_input(|_| Message::Drop),
-            text_input(&key, &key).on_input(|_| Message::Drop),
-            text(format!("Sys Info: {:?}", self.server_info)),
-            button("Allow Connections").on_press(Message::Register),
-            text(&self.wait_reason),
-            text(&self.error),
-        ]
-        .spacing(10)
-        .padding(20)
+        let pin = self.pin.clone().unwrap_or("None".to_owned());
+        let key = self.key.clone().unwrap_or("None".to_owned());
+        
+        container (
+            column![
+                row![text("Pin"), space().width(24), text_input(&pin, &pin).on_input(|_| Message::Drop)],
+                row![text("Key"), space().width(20), text_input(&key, &key).on_input(|_| Message::Drop)],
+                space().height(20),
+                // text(format!("Sys Info: {:?}", self.server_info)),
+                container(button("Allow Connections").on_press(Message::Register)).center_x(Fill),
+                text(&self.wait_reason),
+                text(&self.error),
+            ]
+            .max_width(400)
+
+        )
+        .center_x(Fill)
+        .center_y(Fill)
         .into()
     }
 }

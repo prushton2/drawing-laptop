@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use iroh::{Endpoint, PublicKey, endpoint::{BindError, ConnectError, Connection, ConnectionError, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
+use iroh::{Endpoint, PublicKey, endpoint::{BindError, ConnectError, Connection, ConnectionError, ReadError, RecvStream, SendStream, WriteError, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
 
 const ALPN: &[u8] = b"hello";
 
@@ -12,6 +12,8 @@ pub enum P2PError {
     BindError(BindError),
     ConnectionError(ConnectionError),
     ConnectError(ConnectError),
+    WriteError(WriteError),
+    ReadError(ReadError),
     PoisonedMutex
 }
 
@@ -98,8 +100,8 @@ impl P2P {
     pub async fn send(&mut self, message: &[u8]) -> Result<(), P2PError> {
         let (send, _) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
         let len: [u8; 4] = (message.len() as u32).to_be_bytes();
-        send.write_all(&len).await.unwrap();
-        send.write_all(message).await.unwrap();
+        send.write_all(&len).await.map_err(|e| P2PError::WriteError(e))?;
+        send.write_all(message).await.map_err(|e| P2PError::WriteError(e))?;
         Ok(())
     }
 
@@ -110,7 +112,7 @@ impl P2P {
         
         // get length of message (first 4 bytes)
         for _ in 0..4 {
-            match recv.read(&mut byte).await.unwrap() {
+            match recv.read(&mut byte).await.map_err(|e| P2PError::ReadError(e))? {
                 None => return Ok(vec![]),
                 Some(_) => {
                     // println!("Read byte {:?}", byte);
