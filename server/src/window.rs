@@ -2,7 +2,7 @@ use tokio::sync::Mutex;
 use std::sync::Arc;
 
 use iced::Task;
-use iced::widget::{button, column, container, text};
+use iced::widget::{button, column, text, text_input};
 
 use p2p::protocol::ServerInformation;
 
@@ -18,6 +18,8 @@ pub struct Window {
 pub enum Message {
     StartWait,
     ConnectionEstablished(Result<(), String>),
+
+    Drop
 }
 
 impl Window {
@@ -52,14 +54,19 @@ impl Window {
                 if let Err(e) = result { eprintln!("send failed: {e}"); }
                 println!("established");
                 iced::window::latest().and_then(iced::window::close)
+            },
+            Message::Drop => {
+                Task::none()
             }
         }
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
+        let pin = format!("Pin: {}", self.pin);
+        let key = format!("Key: {}", self.key);
         column![
-            text(format!("Pin: {}", self.pin)),
-            text(format!("Key: {}", self.key)),
+            text_input(&pin, &pin).on_input(|_| Message::Drop),
+            text_input(&key, &key).on_input(|_| Message::Drop),
             text(format!("Sys Info: {:?}", self.server_info)),
             button("Wait for client").on_press(Message::StartWait),
             text(if self.waiting { "Waiting for client to connect..." } else { "" }),

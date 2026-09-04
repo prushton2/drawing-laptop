@@ -2,7 +2,7 @@ use std::sync::Arc;
 use iroh::EndpointId;
 use tokio::sync::Mutex;
 use iced::{Length::Fill, Subscription, Task, window};
-use iced::widget::{self, button, column, container, text, text_input};
+use iced::widget::{self, button, column, row, container, text, text_input};
 use p2p::{self, protocol::{self, IntoBytes}};
 use p2p::protocol::mouse_click::{MouseButton, MouseState};
 
@@ -14,7 +14,8 @@ pub struct Window {
 
     known_size: (usize, usize),
     
-    textbox_content: String
+    pin_textbox: String,
+    key_textbox: String,
 }
 
 #[derive(Clone)]
@@ -26,7 +27,8 @@ pub enum Message {
     PinSubmitted,
     P2PCreated((Arc<Mutex<p2p::P2P>>, protocol::ServerInformation)),
     
-    TextboxChanged(String),
+    PINTextbox(String),
+    KeyTextbox(String),
     Sent(Result<(), String>),
 }
 
@@ -82,11 +84,17 @@ impl Window {
                 )
             },
             Message::PinSubmitted => {
-                let pin = self.textbox_content.clone();
+                let pin_textbox = self.pin_textbox.clone();
+                let key_textbox = self.key_textbox.clone();
                 Task::perform(
                     async move {
-                        let key = p2p::remote_key_store::get(&pin).await;
-                        p2p::remote_key_store::delete(&pin).await;
+                        let key;
+                        if key_textbox.len() == 0 {
+                            key = p2p::remote_key_store::get(&pin_textbox).await;
+                            p2p::remote_key_store::delete(&pin_textbox).await;
+                        } else {
+                            key = key_textbox;
+                        }
 
                         let mut client = p2p::P2P::connect(key.parse::<EndpointId>().unwrap()).await.unwrap();
                         let _ = client.send("test".as_bytes()).await;
@@ -120,8 +128,13 @@ impl Window {
                 if let Err(e) = result { eprintln!("send failed: {e}"); }
                 Task::none()
             },
-            Message::TextboxChanged(f) => {
-                self.textbox_content = f;
+
+            Message::PINTextbox(f) => {
+                self.pin_textbox = f;
+                Task::none()
+            },
+            Message::KeyTextbox(f) => {
+                self.key_textbox = f;
                 Task::none()
             }
         }
@@ -132,8 +145,11 @@ impl Window {
             return container (
                 column![
                     text("Input device PIN"),
-                    text_input("000000", &self.textbox_content).on_input(Message::TextboxChanged),
-                    button("Confirm").on_press(Message::PinSubmitted)
+                    row![text_input("000000", &self.pin_textbox).on_input(Message::PINTextbox), button("Confirm").on_press(Message::PinSubmitted)],
+                    text("OR"),
+                    text("Input device Key"),
+                    row![text_input("", &self.key_textbox).on_input(Message::KeyTextbox), button("Confirm").on_press(Message::PinSubmitted)],
+                    
                 ]
             )
             .width(Fill)
