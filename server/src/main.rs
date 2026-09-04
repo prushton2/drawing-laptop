@@ -1,17 +1,16 @@
-use enigo::Mouse;
-use enigo::{Button, Coordinate::Abs, Direction::Click, Enigo, Settings};
-use iroh::endpoint::presets::{self, Preset};
-use iroh::EndpointId;
-
 use p2p::protocol::FromBytes;
 use p2p::{self, protocol, protocol::IntoBytes};
 
+use crate::mouse::Mouse;
+
+mod mouse;
+
 #[tokio::main]
 async fn main() {
-    let mut enigo = Enigo::new(&Settings::default()).unwrap();
-    
-    // enigo.move_mouse(1280, 800, Abs).unwrap();
-    // enigo.button(Button::Left, Click).unwrap();
+    // init mouse controller
+    let mut mouse = mouse::enigo::EnigoMouse::new();
+    // let mut mouse = mouse::dummy::DummyMouse::new();
+
     let (mut server, key) = p2p::P2P::init().await.unwrap();
     let pin = p2p::remote_key_store::generate_key();
     p2p::remote_key_store::set(&pin, &key.to_string()).await;
@@ -31,12 +30,14 @@ async fn main() {
     loop {
         let response = server.read().await.unwrap();
         let parsed = p2p::protocol::FromBytes::parse(&response);
-        println!("{:?}", parsed);
-        // match parsed {
-        //     FromBytes::MouseMove(message) => {
-        //        enigo.move_mouse(message.x as i32, message.y as i32, Abs).unwrap();
-        //     }
-        //     _ => {}
-        // }
+        match parsed {
+            FromBytes::MouseMove(message) => {
+                mouse.move_mouse(message.x, message.y);
+            }
+            FromBytes::MouseClick(message) => {
+                mouse.click_mouse(message.button, message.state);
+            }
+            _ => {}
+        }
     }
 }
