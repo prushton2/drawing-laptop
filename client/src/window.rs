@@ -1,8 +1,10 @@
 use std::sync::Arc;
+use iced::Alignment::Center;
+use iced::widget::rule::FillMode::Percent;
 use iroh::EndpointId;
 use tokio::sync::Mutex;
 use iced::{Length::Fill, Subscription, Task, window};
-use iced::widget::{self, button, column, row, container, text, text_input};
+use iced::widget::{self, button, column, container, row, space, text, text_input};
 use p2p::{self, protocol::{self, IntoBytes}};
 use p2p::protocol::mouse_click::{MouseButton, MouseState};
 
@@ -144,24 +146,22 @@ impl Window {
         if self.p2p.is_none() {
             return container (
                 column![
-                    text("Input device PIN"),
-                    row![text_input("000000", &self.pin_textbox).on_input(Message::PINTextbox), button("Confirm").on_press(Message::PinSubmitted)],
-                    text("OR"),
-                    text("Input device Key"),
-                    row![text_input("", &self.key_textbox).on_input(Message::KeyTextbox), button("Confirm").on_press(Message::PinSubmitted)],
-                    
+                    text("Input device pin").width(Fill).align_x(Center),
+                    row![text_input("000000", &self.pin_textbox).on_input(Message::PINTextbox), space().width(20), button("Connect").on_press(Message::PinSubmitted)],
+                    text("OR").width(Fill).align_x(Center),
+                    text("Input device key").width(Fill).align_x(Center),
+                    row![text_input("", &self.key_textbox).on_input(Message::KeyTextbox), space().width(20), button("Connect").on_press(Message::PinSubmitted)],
                 ]
+                .max_width(400)
             )
-            .width(Fill)
-            .height(Fill)
+            .center_x(Fill)
+            .center_y(Fill)
             .into()
         }
 
         return container (
             widget::MouseArea::new(
-                widget::row![
-                    // widget::text(format!("{}, {}", self.mouse_pos.0, self.mouse_pos.1))
-                ]
+                widget::row![]
                 .width(Fill)
                 .height(Fill)
             )
