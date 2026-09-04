@@ -8,5 +8,4 @@ fn main() {
         .subscription(window::subscription)
         .theme(Theme::CatppuccinFrappe)
         .run();
-
 }

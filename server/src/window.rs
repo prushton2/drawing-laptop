@@ -1,17 +1,23 @@
 use p2p::p2p::P2PError;
 use tokio::sync::Mutex;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use iced::Task;
 use iced::widget::{button, column, text, text_input};
 
-use p2p::protocol::ServerInformation;
+use p2p::protocol::{FromBytes, IntoBytes, ServerInformation};
+
+use crate::mouse::{self, Mouse};
 
 pub struct Window {
+    p2p: Arc<Mutex<Option<p2p::P2P>>>,
     server_info: ServerInformation,
+    mouse_move_handle: Option<JoinHandle<i32>>,
+
     pin: Option<String>,
     key: Option<String>,
-    p2p: Option<Arc<Mutex<p2p::P2P>>>,
+    
     wait_reason: String,
     error: String,
 }
@@ -19,18 +25,21 @@ pub struct Window {
 #[derive(Clone)]
 pub enum Message {
     Register,
-    AwaitClient(Result<(Arc<Mutex<p2p::P2P>>, String, String), Arc<P2PError>>),
+    AwaitClient(Result<(Arc<Mutex<Option<p2p::P2P>>>, String, String), Arc<P2PError>>),
     ConnectionEstablished(Result<(), String>),
-    Drop
+    Disconnect,
+    Drop,
+    Null(i32)
 }
 
 impl Window {
-    pub fn boot(server_information: ServerInformation) -> Self {
+    pub fn boot(server_information: ServerInformation, p2p: Arc<Mutex<Option<p2p::P2P>>>) -> Self {
         let this = Self {
             server_info: server_information,
+            p2p: p2p,
+            mouse_move_handle: None,
             pin: None,
             key: None,
-            p2p: None,
             wait_reason: String::from(""),
             error: String::from("")
         };
@@ -44,14 +53,14 @@ impl Window {
                 self.wait_reason = "Registering...".to_owned();
 
                 Task::perform(
-                    async {
+                    async move {
                         let (server, key) = p2p::P2P::init().await.map_err(|e| Arc::new(e))?;
 
                         let pin = p2p::remote_key_store::generate_key();
                         let key = key.to_string();
                         p2p::remote_key_store::set(&pin, &key.to_string()).await;
 
-                        Ok((Arc::new(Mutex::new(server)), key, pin))
+                        Ok((Arc::new(Mutex::new(Some(server))), key, pin))
                     },
                     Message::AwaitClient
                 )
@@ -66,18 +75,18 @@ impl Window {
                     }
                 };
 
-                self.p2p = Some(p2p);
+                self.p2p = p2p;
                 self.key = Some(key);
                 self.pin = Some(pin);
 
-                let arc = self.p2p.as_mut().unwrap();
-                let reference = arc.clone();
+                let arc = self.p2p.clone();
                 
                 self.wait_reason = "Waiting for connection".to_owned();
                 Task::perform(
                 async move {
-                        let mut lock = reference.lock().await;
-                        let _ = lock.await_connection().await;
+                        let mut lock = arc.lock().await;
+                        let p2p = lock.as_mut().unwrap();
+                        let _ = p2p.await_connection().await;
                         Ok(())
                     },
                     Message::ConnectionEstablished,
@@ -85,20 +94,91 @@ impl Window {
             }
             Message::ConnectionEstablished(result) => {
                 if let Err(e) = result { eprintln!("send failed: {e}"); }
-                println!("established");
-                iced::window::latest().and_then(iced::window::close)
+                self.wait_reason = "Connection Established".to_owned();
+
+                let p2p_arc = self.p2p.clone();
+                let server_info_bytes = self.server_info.into_bytes();
+
+                let handle: JoinHandle<i32> = std::thread::spawn(move || {
+                    tokio::runtime::Runtime::new().unwrap().block_on(async move { 
+                        
+                        let mut server_lock = p2p_arc.lock().await;
+                        let server = server_lock.as_mut().unwrap();
+
+                        let _ = server.send(&server_info_bytes).await;
+
+                        drop(server_lock);
+
+                        let mut mouse = mouse::dummy::DummyMouse::new();
+                        
+                        loop {
+                            let mut server_lock = p2p_arc.lock().await;
+                            let server = server_lock.as_mut().unwrap();
+
+                            let response = server.read().await.unwrap();
+                            
+                            drop(server_lock);
+                            
+                            let parsed = p2p::protocol::FromBytes::parse(&response);
+                            match parsed {
+                                FromBytes::MouseMove(message) => {
+                                    mouse.move_mouse(message.x, message.y);
+                                }
+                                FromBytes::MouseClick(message) => {
+                                    mouse.click_mouse(message.button, message.state);
+                                }
+                                _ => {}
+                            }
+                        }
+                    })
+                });
+
+                self.mouse_move_handle = Some(handle);
+
+                Task::none()
+            },
+            Message::Disconnect => {
+                self.mouse_move_handle = None;
+                self.pin = None;
+                self.key = None;
+                self.error = String::from("");
+                self.wait_reason = String::from("");
+                let p2p_arc = self.p2p.clone();
+
+                self.p2p = Arc::new(Mutex::new(None));
+
+
+                Task::perform(
+                async move {
+                        let mut lock = p2p_arc.lock().await;
+                        if let Some(p2p) = lock.as_mut() {
+                            let _ = p2p.close().await;
+                        } else {
+                            println!("Could not close connection");
+                        }
+                        
+                        0
+                    },
+                    Message::Null,
+                )
             },
             Message::Drop => {
+                Task::none()
+            },
+            Message::Null(_) => {
                 Task::none()
             }
         }
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
+        if self.mouse_move_handle.is_some() {
+            return button("Disconnect").on_press(Message::Disconnect).into();
+        }
+
         let pin = format!("Pin: {:?}", self.pin);
         let key = format!("Key: {:?}", self.key);
         column![
-            text(&self.error),
             text_input(&pin, &pin).on_input(|_| Message::Drop),
             text_input(&key, &key).on_input(|_| Message::Drop),
             text(format!("Sys Info: {:?}", self.server_info)),
@@ -111,3 +191,5 @@ impl Window {
         .into()
     }
 }
+
+

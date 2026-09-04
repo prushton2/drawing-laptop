@@ -9,12 +9,12 @@ use crate::mouse::Mouse;
 mod mouse;
 mod window;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // init mouse controller
     // let mut mouse = mouse::enigo::EnigoMouse::new();
-    let mut mouse = mouse::dummy::DummyMouse::new();
 
+    let p2p_handle = Arc::new(Mutex::new(None));
+    let p2p_clone = p2p_handle.clone();
 
     let server_info = protocol::ServerInformation {
         width: 1920,
@@ -23,28 +23,10 @@ async fn main() {
 
     let _ = iced::application(
         move || {
-            window::Window::boot(server_info)
+            window::Window::boot(server_info, p2p_clone.clone())
         },
         window::Window::update,
         window::Window::view
     )
-        .run();
-
-    // let mut server_lock = p2p_arc.lock().await;
-
-    // let _ = server_lock.send(&server_info.into_bytes()).await;
-
-    // loop {
-    //     let response = server_lock.read().await.unwrap();
-    //     let parsed = p2p::protocol::FromBytes::parse(&response);
-    //     match parsed {
-    //         FromBytes::MouseMove(message) => {
-    //             mouse.move_mouse(message.x, message.y);
-    //         }
-    //         FromBytes::MouseClick(message) => {
-    //             mouse.click_mouse(message.button, message.state);
-    //         }
-    //         _ => {}
-    //     }
-    // }
+        .run();   
 }

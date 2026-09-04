@@ -1,10 +1,13 @@
 use std::sync::Arc;
-use iced::Alignment::Center;
-use iced::widget::rule::FillMode::Percent;
+
 use iroh::EndpointId;
+
 use tokio::sync::Mutex;
+
+use iced::Alignment::Center;
 use iced::{Length::Fill, Subscription, Task, window};
 use iced::widget::{self, button, column, container, row, space, text, text_input};
+
 use p2p::{self, protocol::{self, IntoBytes}};
 use p2p::protocol::mouse_click::{MouseButton, MouseState};
 
