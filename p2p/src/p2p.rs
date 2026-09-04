@@ -14,7 +14,8 @@ pub enum P2PError {
     ConnectError(ConnectError),
     WriteError(WriteError),
     ReadError(ReadError),
-    PoisonedMutex
+    PoisonedMutex,
+    Timeout
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +51,9 @@ impl P2P {
         let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::BindError(e))?;
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
 
-        ep.online().await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), ep.online()).await.map_err(|_| P2PError::Timeout)?;
+
+        // ep.online().await;
         let id = ep.id();
 
         Ok((Self {

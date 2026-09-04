@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
+use iced::alignment::Horizontal::Center;
 use tokio::sync::Mutex;
 
 use iced::Length::Fill;
@@ -71,7 +72,7 @@ impl Window {
                 let (p2p, key, pin) = match result {
                     Ok(t) => t,
                     Err(t) => {
-                        self.error = format!("{:?}", t);
+                        self.error = format!("Error: {:?}", t);
                         self.wait_reason = String::from("");
                         return Task::none()
                     }
@@ -111,7 +112,10 @@ impl Window {
 
                         drop(server_lock);
 
-                        let mut mouse = mouse::EnigoMouse::new();
+                        let mut mouse: Box<dyn Mouse> = Box::new(mouse::DummyMouse::new());
+                        if !cfg!(debug_assertions) {
+                            mouse = Box::new(mouse::EnigoMouse::new());
+                        }
                         
                         loop {
                             let mut server_lock = p2p_arc.lock().await;
@@ -188,8 +192,8 @@ impl Window {
                 space().height(20),
                 // text(format!("Sys Info: {:?}", self.server_info)),
                 container(button("Allow Connections").on_press(Message::Register)).center_x(Fill),
-                text(&self.wait_reason),
-                text(&self.error),
+                text(&self.wait_reason).width(Fill).align_x(Center),
+                text(&self.error).width(Fill).align_x(Center),
             ]
             .max_width(400)
 
