@@ -4898,12 +4898,10 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
- "anyhow",
  "enigo",
  "iced",
- "iced_core",
  "iroh",
  "p2p",
  "tokio",

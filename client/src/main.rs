@@ -7,5 +7,6 @@ fn main() {
     let _ = iced::application(window::Window::boot, window::Window::update, window::Window::view)
         .subscription(window::subscription)
         .theme(Theme::CatppuccinFrappe)
+        .title("Drawing Laptop Client")
         .run();
 }
