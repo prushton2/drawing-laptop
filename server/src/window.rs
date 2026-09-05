@@ -207,7 +207,7 @@ impl Window {
                 )
             },
             Message::SelectMonitor(i) => {
-                self.selected_monitor = if Some(i) == self.selected_monitor { None } else { Some(i) };
+                self.selected_monitor = Some(i);
                 Task::none()
             }
             Message::Drop => {
