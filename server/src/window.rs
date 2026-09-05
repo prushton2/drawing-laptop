@@ -10,19 +10,26 @@ use iced::widget::{space, button, column, container, row, text, text_input};
 
 use p2p::protocol::{FromBytes, IntoBytes, ServerInformation};
 use p2p::p2p::P2PError;
+use winit::monitor::MonitorHandle;
 
 use crate::mouse::{self, Mouse};
 
 pub struct Window {
     p2p: Arc<Mutex<Option<p2p::P2P>>>,
-    server_info: ServerInformation,
     mouse_move_handle: Option<JoinHandle<i32>>,
+    
+    available_monitors: Vec<MonitorHandle>,
+    selected_monitor: Option<usize>,
 
     pin: Option<String>,
     key: Option<String>,
     
     wait_reason: String,
     error: String,
+
+
+    // AAAA
+    labels: Vec<String>
 }
 
 #[derive(Clone)]
@@ -30,21 +37,39 @@ pub enum Message {
     Register,
     AwaitClient(Result<(Arc<Mutex<Option<p2p::P2P>>>, String, String), Arc<P2PError>>),
     ConnectionEstablished(Result<(), String>),
+    SelectMonitor(usize),
     Disconnect,
     Drop,
     Null(())
 }
 
 impl Window {
-    pub fn boot(server_information: ServerInformation) -> Self {
+    pub fn boot(monitors: Vec<MonitorHandle>) -> Self {
+        let monitor_labels = monitors
+            .iter()
+            .map(|e| 
+                format!("{} ({}x{}@{}hz)", 
+                    e.name().unwrap_or("".to_owned()), 
+                    e.size().width, 
+                    e.size().height, 
+                    e.refresh_rate_millihertz().unwrap_or(0) / 1000
+                )
+            ).collect();
+
         let this = Self {
-            server_info: server_information,
             p2p: Arc::new(Mutex::new(None)),
             mouse_move_handle: None,
+
+            available_monitors: monitors,
+            selected_monitor: None,
+
             pin: None,
             key: None,
+
             wait_reason: String::from(""),
-            error: String::from("")
+            error: String::from(""),
+
+            labels: monitor_labels,
         };
 
         this
@@ -53,6 +78,12 @@ impl Window {
     pub fn update(&mut self, message: Message) -> Task<Message>{
         match message {
             Message::Register => {
+                if self.selected_monitor.is_none() {
+                    self.error = "Error: Please select a monitor".to_owned();
+                    return Task::none()
+                }
+                
+                self.error = "".to_owned();
                 self.wait_reason = "Registering...".to_owned();
 
                 Task::perform(
@@ -98,9 +129,17 @@ impl Window {
             Message::ConnectionEstablished(result) => {
                 if let Err(e) = result { eprintln!("send failed: {e}"); }
                 self.wait_reason = "Connection Established".to_owned();
+                let selected_monitor = &self.available_monitors[self.selected_monitor.unwrap()];
 
+                // construct server info to send to client
                 let p2p_arc = self.p2p.clone();
-                let server_info_bytes = self.server_info.into_bytes();
+                let server_info_bytes = ServerInformation {
+                    width:  selected_monitor.size().width,
+                    height: selected_monitor.size().height
+                }.into_bytes();
+
+                // the coordinates of the top left of the monitor to offset mouse_move
+                let coordinates = selected_monitor.position().clone();
 
                 let handle: JoinHandle<i32> = std::thread::spawn(move || {
                     tokio::runtime::Runtime::new().unwrap().block_on(async move { 
@@ -123,12 +162,13 @@ impl Window {
 
                             let response = server.read().await.unwrap();
                             
-                            drop(server_lock);
+                            // acquire and drop lock rapidly to let other threads use lock if needed
+                            drop(server_lock); 
                             
                             let parsed = p2p::protocol::FromBytes::parse(&response);
                             match parsed {
                                 FromBytes::MouseMove(message) => {
-                                    mouse.move_mouse(message.x, message.y);
+                                    mouse.move_mouse(coordinates.x as u32 + message.x, coordinates.y as u32 + message.y);
                                 }
                                 FromBytes::MouseClick(message) => {
                                     mouse.click_mouse(message.button, message.state);
@@ -150,9 +190,7 @@ impl Window {
                 self.error = String::from("");
                 self.wait_reason = String::from("");
                 let p2p_arc = self.p2p.clone();
-
                 self.p2p = Arc::new(Mutex::new(None));
-
 
                 Task::perform(
                 async move {
@@ -168,6 +206,10 @@ impl Window {
                     Message::Null,
                 )
             },
+            Message::SelectMonitor(i) => {
+                self.selected_monitor = if Some(i) == self.selected_monitor { None } else { Some(i) };
+                Task::none()
+            }
             Message::Drop => {
                 Task::none()
             },
@@ -184,16 +226,38 @@ impl Window {
 
         let pin = self.pin.clone().unwrap_or("None".to_owned());
         let key = self.key.clone().unwrap_or("None".to_owned());
-        
+
+        let mut buttons: Vec<iced::Element<'_, Message>> = vec![];
+
+        for i in 0..self.labels.len() {
+            let mut button = button(self.labels[i].as_str()).on_press(Message::SelectMonitor(i)).width(Fill);
+
+            if Some(i) == self.selected_monitor {
+                button = button.style(|theme, status| {
+                    button::subtle(theme, status)
+                });
+            }
+
+            buttons.push(
+                button.into()
+            );
+            buttons.push(space().height(5).into())
+        }
+
         container (
             column![
+                text("Select a monitor").width(Fill).align_x(Center),
+                iced::widget::Column::from_vec(buttons).width(Fill).align_x(Center),
+                
+                space().height(20),
+                container(button("Allow Connections").on_press(Message::Register)).center_x(Fill),
+                space().height(20),
+                
                 row![text("Pin"), space().width(24), text_input(&pin, &pin).on_input(|_| Message::Drop)],
                 row![text("Key"), space().width(20), text_input(&key, &key).on_input(|_| Message::Drop)],
-                space().height(20),
-                // text(format!("Sys Info: {:?}", self.server_info)),
-                container(button("Allow Connections").on_press(Message::Register)).center_x(Fill),
+                
                 text(&self.wait_reason).width(Fill).align_x(Center),
-                text(&self.error).width(Fill).align_x(Center),
+                text(&self.error).width(Fill).align_x(Center).style(|t| {text::danger(t)}),
             ]
             .max_width(400)
 

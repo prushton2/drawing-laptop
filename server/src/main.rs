@@ -1,19 +1,16 @@
 use iced::Theme;
 
-use p2p::protocol;
+use winit::monitor::MonitorHandle;
 
 mod mouse;
 mod window;
 
 fn main() {
-    let server_info = protocol::ServerInformation {
-        width: 1920,
-        height: 1080
-    };
-
+    
     let _ = iced::application(
-        move || {
-            window::Window::boot(server_info)
+        || {
+            let displays = winit::event_loop::EventLoop::new().unwrap().available_monitors().collect::<Vec<MonitorHandle>>();
+            window::Window::boot(displays)
         },
         window::Window::update,
         window::Window::view
