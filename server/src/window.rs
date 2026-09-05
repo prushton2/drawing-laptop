@@ -224,8 +224,8 @@ impl Window {
             return button("Disconnect").on_press(Message::Disconnect).into();
         }
 
-        let pin = self.pin.clone().unwrap_or("None".to_owned());
-        let key = self.key.clone().unwrap_or("None".to_owned());
+        let pin = self.pin.clone().unwrap_or("".to_owned());
+        let key = self.key.clone().unwrap_or("".to_owned());
 
         let mut buttons: Vec<iced::Element<'_, Message>> = vec![];
 
