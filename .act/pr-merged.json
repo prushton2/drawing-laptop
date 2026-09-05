@@ -1,0 +1,21 @@
+{
+  "action": "closed",
+  "pull_request": {
+    "number": 123,
+    "merged": true,
+    "title": "Test release",
+    "head": {
+      "ref": "feature-branch",
+      "sha": "0000000000000000000000000000000000000000"
+    },
+    "base": {
+      "ref": "master",
+      "sha": "0000000000000000000000000000000000000000"
+    }
+  },
+  "repository": {
+    "name": "your-repo",
+    "full_name": "you/your-repo",
+    "default_branch": "master"
+  }
+}

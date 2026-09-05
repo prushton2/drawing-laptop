@@ -1,0 +1,1 @@
+act pull_request -W .github/workflows/deploy-check.yaml
