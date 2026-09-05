@@ -38,7 +38,7 @@ jobs:
     - name: build
       run: cargo build --release
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: server-bin
         path: server/target/release/server
@@ -72,7 +72,7 @@ jobs:
     - name: build
       run: cargo build --release
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: client-bin
         path: client/target/release/client
@@ -112,7 +112,7 @@ jobs:
     - name: build
       run: cargo build --release --target x86_64-pc-windows-gnu
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: server-exe
         path: server/target/x86_64-pc-windows-gnu/release/server.exe
@@ -152,7 +152,7 @@ jobs:
     - name: build
       run: cargo build --release --target x86_64-pc-windows-gnu
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: client-exe
         path: client/target/x86_64-pc-windows-gnu/release/client.exe
@@ -179,22 +179,22 @@ jobs:
         version=$(grep -m1 '^version' server/Cargo.toml | cut -d'"' -f2)
         echo "tag=v${version}" >> "$GITHUB_OUTPUT"
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: server-bin
         path: dist/linux-server
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: client-bin
         path: dist/linux-client
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: server-exe
         path: dist/windows-server
 
-    - uses: actions/download-artifact@v3
+    - uses: actions/download-artifact@v4
       with:
         name: client-exe
         path: dist/windows-client
@@ -202,8 +202,8 @@ jobs:
     - name: Stage release assets
       run: |
         mkdir -p release
-        mv dist/linux-server/server    release/drawing-laptop-linux-server
-        mv dist/linux-client/client    release/drawing-laptop-linux-client
+        mv dist/linux-server/server       release/drawing-laptop-linux-server
+        mv dist/linux-client/client       release/drawing-laptop-linux-client
         mv dist/windows-server/server.exe release/drawing-laptop-windows-server.exe
         mv dist/windows-client/client.exe release/drawing-laptop-windows-client.exe
         chmod +x release/drawing-laptop-linux-*
