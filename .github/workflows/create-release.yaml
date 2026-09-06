@@ -206,7 +206,7 @@ jobs:
         mv dist/linux-client/client       release/waydraw-linux-client
         mv dist/windows-server/server.exe release/waydraw-windows-server.exe
         mv dist/windows-client/client.exe release/waydraw-windows-client.exe
-        chmod +x release/drawing-laptop-linux-*
+        chmod +x release/waydraw-linux-*
         ls -l release
 
     - name: Create Release
