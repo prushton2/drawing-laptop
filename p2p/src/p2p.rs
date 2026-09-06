@@ -72,7 +72,7 @@ impl P2P {
         let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::during("Could not connect to hardware", P2PError::BindError(e.to_string())))?;
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
 
-        tokio::time::timeout(std::time::Duration::from_secs(5), ep.online()).await.map_err(|_| P2PError::during("Connection timed out communicating with Iroh relays", P2PError::Timeout))?;
+        tokio::time::timeout(std::time::Duration::from_secs(5), ep.online()).await.map_err(|_| P2PError::during("Connection timed out communicating with Iroh relays. If this persists, ensure there is no middleman in your TLS connections or use a VPN.", P2PError::Timeout))?;
 
         let id = ep.id();
 
@@ -112,7 +112,7 @@ impl P2P {
             .map_err(|_e|
                 P2PError::during("Error connecting to server", P2PError::Timeout))?
             .map_err(|e| 
-                P2PError::during("Error creating connection with Iroh relays", P2PError::CreateConnectionError(e.to_string()))
+                P2PError::during("Error creating connection with Iroh relays. If this persists, ensure there is no middleman in your TLS connections or use a VPN.", P2PError::CreateConnectionError(e.to_string()))
             )?;
 
 
