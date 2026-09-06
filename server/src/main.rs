@@ -16,6 +16,6 @@ fn main() {
         window::Window::view
     )
         .theme(Theme::CatppuccinFrappe)
-        .title("Drawing Laptop Server")
+        .title("Waydraw Server")
         .run();
 }
