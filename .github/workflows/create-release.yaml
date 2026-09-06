@@ -202,10 +202,10 @@ jobs:
     - name: Stage release assets
       run: |
         mkdir -p release
-        mv dist/linux-server/server       release/drawing-laptop-linux-server
-        mv dist/linux-client/client       release/drawing-laptop-linux-client
-        mv dist/windows-server/server.exe release/drawing-laptop-windows-server.exe
-        mv dist/windows-client/client.exe release/drawing-laptop-windows-client.exe
+        mv dist/linux-server/server       release/waydraw-linux-server
+        mv dist/linux-client/client       release/waydraw-linux-client
+        mv dist/windows-server/server.exe release/waydraw-windows-server.exe
+        mv dist/windows-client/client.exe release/waydraw-windows-client.exe
         chmod +x release/drawing-laptop-linux-*
         ls -l release
 
@@ -217,7 +217,7 @@ jobs:
         name: Release ${{ steps.version.outputs.tag }}
         generate_release_notes: true
         files: |
-          release/drawing-laptop-linux-server
-          release/drawing-laptop-linux-client
-          release/drawing-laptop-windows-server.exe
-          release/drawing-laptop-windows-client.exe
+          release/waydraw-linux-server
+          release/waydraw-linux-client
+          release/waydraw-windows-server.exe
+          release/waydraw-windows-client.exe

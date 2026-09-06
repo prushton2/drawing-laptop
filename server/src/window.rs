@@ -103,7 +103,7 @@ impl Window {
                 let (p2p, key, pin) = match result {
                     Ok(t) => t,
                     Err(t) => {
-                        self.error = format!("Error: {:?}", t);
+                        self.error = String::from((*t).clone());
                         self.wait_reason = String::from("");
                         return Task::none()
                     }
