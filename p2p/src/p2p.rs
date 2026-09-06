@@ -1,21 +1,42 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use iroh::{Endpoint, PublicKey, endpoint::{BindError, ConnectError, Connection, ConnectionError, ReadError, RecvStream, SendStream, WriteError, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
+use iroh::{Endpoint, PublicKey, endpoint::{Connection, RecvStream, SendStream, presets}, protocol::{AcceptError, ProtocolHandler, Router}};
 
 const ALPN: &[u8] = b"hello";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(unused)]
 pub enum P2PError {
-    ConnectionNotEstablished,
-    BindError(BindError),
-    ConnectionError(ConnectionError),
-    ConnectError(ConnectError),
-    WriteError(WriteError),
-    ReadError(ReadError),
+    ErrorDuring(String, Box<P2PError>),
+    BindError(String),
+    AcceptConnectionError(String),
+    CreateConnectionError(String),
+    InputError(String),
+    ConnectionNotFound,
     PoisonedMutex,
-    Timeout
+    Timeout,
+}
+
+impl P2PError {
+    pub fn during(reason: &str, error: P2PError) -> P2PError {
+        P2PError::ErrorDuring(reason.to_string(), Box::new(error))
+    }
+}
+
+impl From<P2PError> for String {
+    fn from(value: P2PError) -> Self {
+        match value {
+            P2PError::ErrorDuring(r, e) => format!("{}: {}", r, String::from(*e)),
+            P2PError::BindError(r) =>                     format!("{} (BindError)", r),
+            P2PError::AcceptConnectionError(r) =>         format!("{} (AcceptConnectionError)", r),
+            P2PError::CreateConnectionError(r) =>         format!("{} (CreateConnectionError)", r),
+            P2PError::InputError(r) =>                    format!("{} (InputError)", r),
+            P2PError::ConnectionNotFound =>                       String::from("(ConnectionNotFound)"),
+            P2PError::PoisonedMutex =>                            String::from("(PoisonedMutex)"),
+            P2PError::Timeout =>                                  String::from("(Timeout)"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -48,12 +69,11 @@ impl P2P {
     pub async fn init() -> Result<(Self, PublicKey), P2PError> {
         let handler = Box::new(Handler::new());
 
-        let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::BindError(e))?;
+        let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::during("Could not connect to hardware", P2PError::BindError(e.to_string())))?;
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
 
-        tokio::time::timeout(std::time::Duration::from_secs(5), ep.online()).await.map_err(|_| P2PError::Timeout)?;
+        tokio::time::timeout(std::time::Duration::from_secs(5), ep.online()).await.map_err(|_| P2PError::during("Connection timed out communicating with Iroh relays", P2PError::Timeout))?;
 
-        // ep.online().await;
         let id = ep.id();
 
         Ok((Self {
@@ -71,7 +91,7 @@ impl P2P {
         }
 
         let conn = self.handler.conn.lock().map_err(|_| P2PError::PoisonedMutex)?.as_mut().unwrap().clone();
-        let (send, receive) = conn.accept_bi().await.map_err(|e| P2PError::ConnectionError(e))?;
+        let (send, receive) = conn.accept_bi().await.map_err(|e| P2PError::during("Error accepting connection from client",P2PError::AcceptConnectionError(e.to_string())))?;
 
         self.conn = Some((send, receive));
         
@@ -81,13 +101,22 @@ impl P2P {
 
     pub async fn connect(id: PublicKey) -> Result<Self, P2PError> {
         let handler = Box::new(Handler::new());
-
-        let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::BindError(e))?;
+        let ep = Endpoint::bind(presets::N0).await.map_err(|e| P2PError::during("Could not connect to hardware", P2PError::BindError(e.to_string())))?;
         let router = Router::builder(ep.clone()).accept(ALPN, handler.clone()).spawn();
-        
-        let conn = ep.connect(id, ALPN).await.map_err(|e| P2PError::ConnectError(e))?;
-        let (send, receive) = conn.open_bi().await.map_err(|e| P2PError::ConnectionError(e))?;
-        
+
+        let conn = tokio::time::timeout(
+            std::time::Duration::from_secs(5), 
+            ep.connect(id, ALPN)
+        )
+            .await
+            .map_err(|_e|
+                P2PError::during("Error connecting to server", P2PError::Timeout))?
+            .map_err(|e| 
+                P2PError::during("Error creating connection with Iroh relays", P2PError::CreateConnectionError(e.to_string()))
+            )?;
+
+
+        let (send, receive) = conn.open_bi().await.map_err(|e| P2PError::during("Error creating connection with server", P2PError::CreateConnectionError(e.to_string())))?;
 
         let mut this = Self {
             handler: handler,
@@ -101,21 +130,21 @@ impl P2P {
     }
 
     pub async fn send(&mut self, message: &[u8]) -> Result<(), P2PError> {
-        let (send, _) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
+        let (send, _) = self.conn.as_mut().ok_or(P2PError::during("Connection lost", P2PError::ConnectionNotFound))?;
         let len: [u8; 4] = (message.len() as u32).to_be_bytes();
-        send.write_all(&len).await.map_err(|e| P2PError::WriteError(e))?;
-        send.write_all(message).await.map_err(|e| P2PError::WriteError(e))?;
+        send.write_all(&len)   .await.map_err(|_| P2PError::during("Connection lost", P2PError::ConnectionNotFound))?;
+        send.write_all(message).await.map_err(|_| P2PError::during("Connection lost", P2PError::ConnectionNotFound))?;
         Ok(())
     }
 
     pub async fn read(&mut self) -> Result<Vec<u8>, P2PError> {
-        let (_, recv) = self.conn.as_mut().ok_or(P2PError::ConnectionNotEstablished)?;
+        let (_, recv) = self.conn.as_mut().ok_or(P2PError::during("Connection lost", P2PError::ConnectionNotFound))?;
         let mut byte = [0u8; 1];
         let mut length: u32 = 0;
         
         // get length of message (first 4 bytes)
         for _ in 0..4 {
-            match recv.read(&mut byte).await.map_err(|e| P2PError::ReadError(e))? {
+            match recv.read(&mut byte).await.map_err(|_| P2PError::during("Connection lost", P2PError::ConnectionNotFound))? {
                 None => return Ok(vec![]),
                 Some(_) => {
                     // println!("Read byte {:?}", byte);

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use iroh::EndpointId;
 
+use p2p::p2p::P2PError;
 use tokio::sync::Mutex;
 
 use iced::Alignment::Center;
@@ -21,6 +22,9 @@ pub struct Window {
     
     pin_textbox: String,
     key_textbox: String,
+
+    wait_reason: String,
+    error: String,
 }
 
 #[derive(Clone)]
@@ -30,7 +34,7 @@ pub enum Message {
     WindowResized((usize, usize)),
 
     PinSubmitted,
-    P2PCreated((Arc<Mutex<p2p::P2P>>, protocol::ServerInformation)),
+    P2PCreated(Result<(Arc<Mutex<p2p::P2P>>, protocol::ServerInformation), P2PError>),
     
     PINTextbox(String),
     KeyTextbox(String),
@@ -91,6 +95,8 @@ impl Window {
             Message::PinSubmitted => {
                 let pin_textbox = self.pin_textbox.clone();
                 let key_textbox = self.key_textbox.clone();
+                self.wait_reason = String::from("Connecting to server...");
+                self.error = String::from("");
                 Task::perform(
                     async move {
                         let key;
@@ -101,10 +107,12 @@ impl Window {
                             key = key_textbox;
                         }
 
-                        let mut client = p2p::P2P::connect(key.parse::<EndpointId>().unwrap()).await.unwrap();
+                        let parsed_key = key.parse::<EndpointId>().map_err(|_| P2PError::during("Error reading key", P2PError::InputError("Invalid key or pin".to_string())))?;
+
+                        let mut client = p2p::P2P::connect(parsed_key).await?;
                         let _ = client.send("test".as_bytes()).await;
 
-                        let data = client.read().await.unwrap();
+                        let data = client.read().await?;
 
                         let server_info = match protocol::FromBytes::parse(&data) {
                             protocol::FromBytes::ServerInformation(d) => d,
@@ -113,13 +121,23 @@ impl Window {
                         
                         let p2p: Arc<Mutex<p2p::P2P>> = Arc::new(Mutex::new(client));
 
-                        (p2p, server_info)
+                        Ok((p2p, server_info))
                     },
                     Message::P2PCreated,
                 )
             },
 
-            Message::P2PCreated((p2p, server_info)) => {
+            Message::P2PCreated(result) => {
+                self.wait_reason = String::from("");
+
+                let (p2p, server_info) = match result {
+                    Ok(t) => t,
+                    Err(e) => {
+                        self.error = String::from(e);
+                        return Task::none()
+                    }
+                };
+
                 self.p2p = Some(p2p);
                 self.server_info = Some(server_info);
                 Task::none()
@@ -130,9 +148,10 @@ impl Window {
                 Task::none()
             },
             Message::Sent(result) => {
-                if let Err(e) = result { 
-                    eprintln!("send failed: {e}"); 
+                if let Err(_) = result { 
                     self.p2p = None;
+                    self.error = String::from("");
+                    self.wait_reason = String::from("");
                     self.key_textbox = String::from("");
                     self.pin_textbox = String::from("");
                 }
@@ -160,6 +179,9 @@ impl Window {
                     text("OR").width(Fill).align_x(Center),
                     text("Input device key").width(Fill).align_x(Center),
                     row![text_input("", &self.key_textbox).on_input(Message::KeyTextbox), space().width(20), button("Connect").on_press(Message::PinSubmitted)],
+                    space().height(20),
+                    text(&self.wait_reason).width(Fill).align_x(Center),
+                    text(&self.error).width(Fill).align_x(Center).style(|t| {text::danger(t)}),
                 ]
                 .max_width(400)
             )
